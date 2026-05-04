@@ -1,0 +1,14 @@
+[project]
+name = "iot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.136.0",
+    "pyserial>=3.5",
+    "python-multipart>=0.0.26",
+    "requests>=2.33.1",
+    "serial>=0.0.97",
+    "uvicorn>=0.44.0",
+]
