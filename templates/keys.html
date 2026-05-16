@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Управление ключами</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        /* Те же стили, что и в locks.html */
+        body { font-family: sans-serif; padding: 20px; background: #f4f7f6; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { text-align: left; background: #eee; padding: 10px; }
+        td { padding: 15px; border: 2px solid black; }
+        .form-group { margin-bottom: 10px; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; }
+        .form-group input, .form-group select { width: 100%; max-width: 300px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .btn { padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; border: none; color: white; }
+        .btn-blue { background: #007bff; }
+        .btn-red { background: red; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Управление ключами</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Владелец ключа</th>
+                    <th>Параметры</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for visitor, key, labs, valid in keys %}
+                <tr>
+                    <td style="background: #aaa; width: 30%;">
+                        <strong style="font-size: 1.1em;">{{ visitor }}</strong>
+                    </td>
+                    <td>
+                        <form action="/admin/update_key" method="POST" autocomplete="off">            
+                            <div class="form-group">
+                                <label>Доступные помещения:</label>
+                                <input type="text" name="labs" placeholder="{{ labs }}">
+                            </div>
+                            <div class="form-group">
+                                <label>Ключ активен:</label>
+                                <input type="text" name="valid" placeholder="{% if valid %}Да{% else %}Нет{% endif %}">
+                            </div>
+                            <input type="hidden" name="visitor" value="{{ visitor }}">
+                            <button type="submit" class="btn btn-blue">Применить настройки</button>
+                        </form>
+                        <hr>
+                        <form action="/admin/dell_key" method="POST">            
+                            <input type="hidden" name="key" value="{{ key }}">
+                            <button type="submit" class="btn btn-red">Удалить</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                
+                <tr>
+                    <td style="background: #aaa; width: 30%;">
+                        <strong style="font-size: 1.1em;">Новый ключ</strong>
+                    </td>
+                    <td>
+                        <form id="addKeyForm" action="/admin/add_key" method="POST" autocomplete="off">            
+                            <div class="form-group">
+                                <label>Владелец ключа:</label>
+                                <input type="text" name="visitor" required placeholder="ФИО">
+                            </div>
+                            <div class="form-group">
+                                <label>Выберите порт Nano:</label>
+                                <select name="port">
+                                    {% if ports %}
+                                        {% for port in ports %}
+                                            <option value="{{ port }}">{{ port }}</option>
+                                        {% endfor %}
+                                    {% else %}
+                                        <option value="">Нет устройств</option>
+                                    {% endif %}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Доступные помещения:</label>
+                                <input type="text" name="labs" required placeholder="504, 505">
+                            </div>
+                            <input type="hidden" name="valid" value="True"> 
+                            <button type="submit" class="btn btn-blue">Добавить ключ</button>
+                        </form>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <br>
+        <a href="/admin" style="text-decoration: none; color: #007bff;">← Вернуться в меню</a>
+    </div>
+
+    <script>
+        const addKeyForm = document.getElementById('addKeyForm');
+        if (addKeyForm) {
+            addKeyForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const form = e.target;
+                const formData = new FormData(form);
+
+                Swal.fire({
+                    title: 'Ожидание метки...',
+                    text: 'Пожалуйста, поднесите пустую карту к считывателю Nano',
+                    icon: 'info',
+                    allowOutsideClick: false,
+                    showConfirmButton: false,
+                    didOpen: () => { Swal.showLoading(); }
+                });
+
+                try {
+                    const response = await fetch(form.getAttribute('action'), {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+
+                    Swal.fire({
+                        title: result.status === 'success' ? 'Успех!' : 'Ошибка',
+                        text: result.message,
+                        icon: result.status,
+                        confirmButtonText: 'Ок'
+                    }).then((swalResult) => {
+                        if (result.status === 'success' && swalResult.isConfirmed) {
+                            location.reload(); 
+                        }
+                    });
+                } catch (error) {
+                    console.error(error);
+                    Swal.fire('Ошибка', 'Не удалось связаться с сервером или время вышло', 'error');
+                }
+            });
+        }
+
+        document.querySelectorAll('form').forEach(form => {
+            if (form.id !== 'addKeyForm') {
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const formData = new FormData(form);
+                    
+                    try {
+                        const response = await fetch(form.getAttribute('action'), {
+                            method: 'POST',
+                            body: formData
+                        });
+                        const result = await response.json();
+
+                        Swal.fire({
+                            title: result.status === 'success' ? 'Успех!' : 'Ошибка',
+                            text: result.message,
+                            icon: result.status,
+                            confirmButtonText: 'Ок'
+                        }).then((swalResult) => {
+                            if (result.status === 'success' && swalResult.isConfirmed) {
+                                form.reset();
+                                location.reload();                                
+                            }
+                        });
+                    } catch (error) {
+                        console.error(error);
+                        Swal.fire('Ошибка', 'Ошибка связи с сервером', 'error');
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

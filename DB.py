@@ -68,7 +68,7 @@ class DB:
         try:
             self.__ensure_connection()
             query = '''DELETE FROM keys where key=%s'''
-            self.__cur.execute(query, (key))
+            self.__cur.execute(query, (key,))
             self.__conn.commit()
             return True
         except Exception as e:
@@ -150,6 +150,7 @@ class DB:
             query = '''INSERT INTO locks (lab, address) values (%s, %s)''' 
             self.__cur.execute(query, (lab, lock_ip))
             self.__conn.commit()
+            logging.info("Замок добавлен")
             return True
         except Exception as e:
             logging.error(f"Ошибка добавления нового замка: {e}")
@@ -158,9 +159,10 @@ class DB:
     def dellLock(self, lock_ip):
         try:
             self.__ensure_connection()
-            query = '''DELETE FROM keys where address=%s''' 
-            self.__cur.execute(query, (lock_ip))
+            query = '''DELETE FROM locks where address=%s''' 
+            self.__cur.execute(query, (lock_ip,))
             self.__conn.commit()
+            logging.info("Замок удален")
             return True
         except Exception as e:
             logging.error(f"Ошибка удаления замка: {e}")

@@ -17,9 +17,9 @@ app = FastAPI(
 )
 
 # Подключаем модули (роутеры)
-app.include_router(admin.router)
-app.include_router(locks.router)
-app.include_router(keys.router)
+app.include_router(admin.router, prefix="/admin")
+app.include_router(locks.router, prefix="/admin")
+app.include_router(keys.router, prefix="/admin")
 
 # @app.exception_handler(RequestValidationError)
 # async def validation_exception_handler(request: Request, exc: RequestValidationError):

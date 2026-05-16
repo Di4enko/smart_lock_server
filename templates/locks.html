@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Управление замками</title>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f4f7f6; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { text-align: left; background: #eee; padding: 10px; }
+        td { padding: 15px; border: 2px solid black; }
+        .form-group { margin-bottom: 10px; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; }
+        .form-group input { width: 100%; max-width: 300px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .btn { padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; border: none; color: white; }
+        .btn-blue { background: #007bff; }
+        .btn-red { background: red; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Список активных замков</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Замок / IP</th>
+                    <th>Параметры конфигурации</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for lab, address in locks %}
+                <tr>
+                    <td style="background: #aaa; width: 30%;">
+                        <strong style="font-size: 1.1em;">{{ lab }}</strong><br>
+                        <span style="color: #666;">IP: {{ address }}</span>
+                    </td>
+                    <td>
+                        <form action="/admin/update_lock" method="POST" autocomplete="off">            
+                            <div class="form-group">
+                                <label>Номер лаборатории:</label>
+                                <input type="number" name="lab" placeholder="{{ lab }}">
+                            </div>
+                            <div class="form-group">
+                                <label>Адрес сервера:</label>
+                                <input type="text" name="server_ip" placeholder="адрес сервера">
+                            </div>
+                            <div class="form-group">
+                                <label>Адрес замка:</label>
+                                <input type="text" name="lock_ip" placeholder="{{ address }}">
+                            </div>
+                            <input type="hidden" name="old_ip" value="{{ address }}">
+                            <button type="submit" class="btn btn-blue">Применить настройки</button>
+                        </form>
+                        <hr>
+                        <form action="/admin/find_lock" method="POST">            
+                            <input type="hidden" name="lock_ip" value="{{ address }}">
+                            <button type="submit" class="btn btn-blue">Найти замок</button>
+                        </form>
+                        <form action="/admin/dell_lock" method="POST">            
+                            <input type="hidden" name="lock_ip" value="{{ address }}">
+                            <button type="submit" class="btn btn-red">Удалить</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                
+                <!-- Форма добавления нового замка -->
+                <tr>
+                    <td style="background: #aaa; width: 30%;">
+                        <strong style="font-size: 1.1em;">Новый замок</strong>
+                    </td>
+                    <td>
+                        <form action="/admin/add_lock" method="POST" autocomplete="off">            
+                            <div class="form-group">
+                                <label>Номер лаборатории:</label>
+                                <input type="number" name="lab" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Адрес замка:</label>
+                                <input type="text" name="lock_ip" required>
+                            </div>
+                            <button type="submit" class="btn btn-blue">Добавить замок</button>
+                        </form>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <br>
+        <a href="/admin" style="text-decoration: none; color: #007bff;">← Вернуться в меню</a>
+    </div>
+
+    <!-- Универсальный AJAX-обработчик -->
+    <script>
+        document.querySelectorAll('form').forEach(form => {
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();                 
+                const formData = new FormData(form);
+                const actionUrl = form.getAttribute('action');
+                const method = form.getAttribute('method') || 'POST';
+
+                try {
+                    const response = await fetch(actionUrl, {
+                        method: method,
+                        body: formData
+                    });
+
+                    const result = await response.json();
+
+                    Swal.fire({
+                        title: result.status === 'success' ? 'Успех!' : 'Ошибка',
+                        text: result.message,
+                        icon: result.status,
+                        confirmButtonText: 'Ок'
+                    }).then((swalResult) => {
+                        if (result.status === 'success' && swalResult.isConfirmed) {
+                            location.reload(); 
+                        }
+                    });
+                } catch (error) {
+                    Swal.fire('Ошибка связи', 'Не удалось отправить запрос на сервер', 'error');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

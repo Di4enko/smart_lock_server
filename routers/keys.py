@@ -3,7 +3,7 @@ import serial
 import time
 import logging
 from fastapi import APIRouter, Depends, Form, HTTPException, status, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from typing import Optional
 from DB import DB
@@ -43,31 +43,7 @@ class AccessRequest(BaseModel):
 
 # --- API для ключей (POST) ---
 
-@router.post("/admin/update_key", response_class=HTMLResponse)
-async def update_lock(
-    visitor: Optional[str] = Form(None, alias='visitor'),
-    key: Optional[str] = Form(None, alias='key'),
-    labs: Optional[str] = Form(None, alias='labs'),
-    valid: Optional[str] = Form(None, alias='valid'),
-    username: str = Depends(get_current_username)
-):
-    """
-    Получает данные из HTML формы и отправляет их на ESP8266
-    """
-    if labs is not None:
-        labs = [int(r.strip()) for r in labs.split(",")]
-    try:
-       
-        if db.updateKey(visitor, key=key, labs=labs, valid=valid):
-            return "<h1>Успех!</h1><p>Замок успешно обновлен.</p><a href='/admin/keys'>Назад</a>"
-        else:
-            return f"<h1>Ошибка</h1><p>Не удалось обновить ключ</p><a href='/admin/keys'>Назад</a>"
-    
-    except Exception as e:
-        logging.error(f"Ошибка связи с замком: {e}")
-        return f"<h1>Ошибка связи</h1><p>{str(e)}</p><a href='/admin/keys'>Назад</a>"
-      
-@router.post("/admin/dell_key", response_class=HTMLResponse)
+@router.post("/dell_key", response_class=JSONResponse)
 async def dell_key(
     key: str = Form(None, alias='key'),
     username: str = Depends(get_current_username)
@@ -77,16 +53,16 @@ async def dell_key(
     """
     try:
        
-        if db.addKey(key):
-            return "<h1>Успех!</h1><p>Ключ успешно удален.</p><a href='/admin/keys'>Назад</a>"
+        if db.dellKey(key):
+            return {"status": "success", "message": "Ключ успешно удален."}
         else:
-            return f"<h1>Ошибка</h1><p>Не удалось удалить ключ</p><a href='/admin/keys'>Назад</a>"
+            return {"status": "error", "message": "Не удалось удалить ключ"}
     
     except Exception as e:
-        logging.error(f"Ошибка связи с замком: {e}")
-        return f"<h1>Ошибка связи</h1><p>{str(e)}</p><a href='/admin/keys'>Назад</a>"
+        logging.error(f"Ошибка БД: {e}")
+        return {"status": "error", "message": "Не удалось удалить ключ"}
     
-@router.post("/admin/add_key")
+@router.post("/add_key", response_class=JSONResponse)
 async def add_key(
     port: str = Form(...), 
     visitor: str = Form(None, alias='visitor'),
@@ -111,8 +87,14 @@ async def add_key(
             
             # Читаем ответ от Nano
             response = ""
+            start_time = time.time()
             while response == "":
-                response = ser.readline().decode().strip()
+                if time.time() - start_time < 15:
+                    response = ser.readline().decode().strip()
+                    break
+                else:
+                    logging.error(f"Нет ответа от программатора")
+                    return {"status": "error", "message": "Метка для записи не обнаружена"}
             logging.info(response)
             if response == "Write complite":
                 res_labs = [int(r.strip()) for r in labs.split(",")]
@@ -121,14 +103,14 @@ async def add_key(
             
                     if db.addKey(visitor, key, res_labs, valid):
                         logging.info("Ключ успешно сохранен в БД.")
+                        return {"status": "success", "message": "Ключ успешно добавлен."}
                     else:
-                        logging.info("Не удалось сохранить ключ в БД")
-        
+                        logging.info("Не удалось сохранить ключ в БД")  
+                        return {"status": "error", "message": "Не удалось добавить ключ"}
                 except Exception as e:
                     logging.error(f"Ошибка связи с замком: {e}")
-                    return f"<h1>Ошибка связи</h1><p>{str(e)}</p><a href='/admin/keys'>Назад</a>"
-                return f"<h1>Статус прошивки</h1><p>Использован порт: {port}</p><p>Ответ Nano: {response}</p><a href='/admin/locks'>Назад</a>"
+                    return {"status": "error", "message": "Не удалось добавить ключ"}
             else:
-                return f"<h1>Ошибка записи ключа</h1><a href='/admin/locks'>Назад</a>"        
+                return {"status": "error", "message": "Не удалось добавить ключ"}   
     except Exception as e:
-        return f"<h1>Ошибка порта</h1><p>{str(e)}</p><a href='/admin/locks'>Назад</a>"
+            return {"status": "error", "message": "Не удалось добавить ключ"}

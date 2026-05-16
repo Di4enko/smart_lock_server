@@ -1,10 +1,7 @@
 import requests
 import logging
-import secrets
-import serial
-import time
-from fastapi import APIRouter, Depends, Form, HTTPException, status, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, status
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from typing import Optional
 from DB import DB
@@ -16,7 +13,6 @@ router = APIRouter()
 # --- Настройка логгера и базы данных ---
 logging.basicConfig(level=logging.INFO)
 security = HTTPBasic()
-
 
 db = DB()
 
@@ -51,8 +47,9 @@ class AccessRequest(BaseModel):
     token: str
     door: str
 
+
 # --- API для замков (POST) ---
-@router.post("/api/check_access", response_class=PlainTextResponse)
+@router.post("/check_access", response_class=PlainTextResponse)
 async def check_access(request: AccessRequest):
     print(request)
     """
@@ -73,30 +70,7 @@ async def check_access(request: AccessRequest):
         db.saveVisit(token, request.door, 'denied')
         return "DENIED"
 
-# --- API для старых датчиков (GET) ---
-@router.get("/measurement", response_class=PlainTextResponse)
-async def receive_measurement(request: Request):
-    """
-    Обработка старых GET-запросов вида /505?temp=25.5
-    """
-    # Игнорируем запрос фавиконки из браузера
-
-    query_params = request.query_params
-    location = 'test'
-
-    # Обработка параметров (например, ?temp=25.5)
-    for measurement, value in query_params.items():
-        try:
-            val_float = float(value)
-            # Формируем кортеж, как в старом коде
-            data = (location, measurement, val_float)
-            db.saveMeasurement(data)
-        except ValueError:
-            logging.error(f"Invalid value for {measurement}: {value}")
-
-    return f"GET request for /{location} processed"
-
-@router.post("/admin/update_lock", response_class=HTMLResponse)
+@router.post("/update_lock", response_class=JSONResponse)
 async def update_lock(
     lab: Optional[str] = Form(None, alias='lab'), 
     server_ip: Optional[str] = Form(None, alias='server_ip'),
@@ -122,15 +96,14 @@ async def update_lock(
         
         if response.status_code == 200:
             db.updateLock(lab, old_ip, lock_ip=lock_ip, lab=lab, server_ip=server_ip)
-            return "<h1>Успех!</h1><p>Замок успешно обновлен.</p><a href='/admin/locks'>Назад</a>"
+            return {"status": "success", "message": f"Замок {lab} успешно обновлен."}
         else:
-            return f"<h1>Ошибка</h1><p>Замок вернул код {response.status_code}</p><a href='/admin/locks'>Назад</a>"
-    
+            return {"status": "error", "message": f"Замок вернул код {response.status_code}"}
     except Exception as e:
-        logging.error(f"Ошибка связи с замком: {e}")
-        return f"<h1>Ошибка связи</h1><p>{str(e)}</p><a href='/admin/locks'>Назад</a>"
+        logging.error(f"Ошибка связи: {e}")
+        return {"status": "error", "message": f"Ошибка связи: {str(e)}"}
     
-@router.post("/admin/add_lock", response_class=HTMLResponse)
+@router.post("/add_lock", response_class=JSONResponse)
 async def add_lock(
     lab: str = Form(), 
     lock_ip: str = Form(),
@@ -142,15 +115,15 @@ async def add_lock(
     
     try:
         if db.addLock(lab, lock_ip):
-            return "<h1>Успех!</h1><p>Замок успешно добавлен.</p><a href='/admin/locks'>Назад</a>"
+            return {"status": "success", "message": "Замок успешно добавлен."}
         else:
-            return f"<h1>Ошибка</h1><p>Ошибка добавления замка</p><a href='/admin/locks'>Назад</a>"
+            return {"status": "error", "message": "Не удалось добавить замок"}
     
     except Exception as e:
-        logging.error(f"Ошибка связи с замком: {e}")
-        return f"<h1>Ошибка связи</h1><p>{str(e)}</p><a href='/admin/locks'>Назад</a>"
+        logging.error(f"Ошибка БД: {e}")
+        return {"status": "error", "message": "Не удалось добавить замок"}
     
-@router.post("/admin/dell_lock", response_class=HTMLResponse)
+@router.post("/dell_lock", response_class=JSONResponse)
 async def dell_lock(
     lock_ip: str = Form(),
     username: str = Depends(get_current_username)
@@ -161,13 +134,13 @@ async def dell_lock(
     
     try:
         if db.dellLock(lock_ip):
-            return "<h1>Успех!</h1><p>Замок успешно удален.</p><a href='/admin/locks'>Назад</a>"
+            return {"status": "success", "message": "Замок успешно удален."}
         else:
-            return f"<h1>Ошибка</h1><p>Ошибка удаления замка</p><a href='/admin/locks'>Назад</a>"
+            return {"status": "error", "message": "Не удалось удалить замок"}
     
     except Exception as e:
-        logging.error(f"Ошибка связи с замком: {e}")
-        return f"<h1>Ошибка связи</h1><p>{str(e)}</p><a href='/admin/locks'>Назад</a>"
+        logging.error(f"Ошибка БД: {e}")
+        return {"status": "error", "message": "Не удалось удалить замок"}
     
 
 @router.get("/find_lock")
