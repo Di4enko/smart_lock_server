@@ -3,9 +3,8 @@
 <head>
     <meta charset="utf-8">
     <title>Управление ключами</title>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="/static/js/sweetalert2.all.min.js"></script>
     <style>
-        /* Те же стили, что и в locks.html */
         body { font-family: sans-serif; padding: 20px; background: #f4f7f6; }
         .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
@@ -17,6 +16,10 @@
         .btn { padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; border: none; color: white; }
         .btn-blue { background: #007bff; }
         .btn-red { background: red; margin-top: 10px; }
+        
+        /* Стили для кнопки порта, чтобы она выглядела опрятно */
+        .btn-serial { background: #6c757d; color: white; padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-serial.selected { background: #28a745; }
     </style>
 </head>
 <body>
@@ -68,16 +71,9 @@
                                 <input type="text" name="visitor" required placeholder="ФИО">
                             </div>
                             <div class="form-group">
-                                <label>Выберите порт Nano:</label>
-                                <select name="port">
-                                    {% if ports %}
-                                        {% for port in ports %}
-                                            <option value="{{ port }}">{{ port }}</option>
-                                        {% endfor %}
-                                    {% else %}
-                                        <option value="">Нет устройств</option>
-                                    {% endif %}
-                                </select>
+                                <label>Локальный считыватель:</label>
+                                <button type="button" id="ChooseSerial" class="btn-serial">Выбрать COM-порт</button>
+                                <span id="portStatus" style="margin-left: 10px; font-size: 0.9em; color: red;">Порт не выбран</span>
                             </div>
                             <div class="form-group">
                                 <label>Доступные помещения:</label>
@@ -95,46 +91,142 @@
     </div>
 
     <script>
+        // Глобальная переменная для хранения выбранного пользователем порта
+        let selectedPort = null;
+
+        const ChooseSerialButton = document.getElementById('ChooseSerial');
+        const portStatus = document.getElementById('portStatus');
+
+        // === 1. Обработчик кнопки выбора порта (только выбирает порт) ===
+        ChooseSerialButton.addEventListener('click', async () => {
+            if (!('serial' in navigator)) {
+                Swal.fire('Ошибка', 'Ваш браузер не поддерживает работу с COM-портами. Используйте Chrome/Edge', 'error');
+                return;
+            }
+
+            try {
+                // Просим браузер показать окно выбора COM-порта
+                selectedPort = await navigator.serial.requestPort();
+                
+                // Если порт успешно выбран, визуально отмечаем это
+                ChooseSerialButton.textContent = "Порт выбран";
+                ChooseSerialButton.classList.add('selected');
+                portStatus.textContent = "Готов к прошивке";
+                portStatus.style.color = "green";
+                
+                Swal.fire('Успех', 'Порт успешно выбран. Теперь заполните форму и нажмите "Добавить ключ"', 'success');
+            } catch (error) {
+                console.error(error);
+                selectedPort = null;
+                ChooseSerialButton.textContent = "Выбрать COM-порт";
+                ChooseSerialButton.classList.remove('selected');
+                portStatus.textContent = "Порт не выбран";
+                portStatus.style.color = "red";
+                Swal.fire('Ошибка', 'Порт не был выбран: ' + error.message, 'error');
+            }
+        });
+
+        // === 2. Обработчик отправки формы (Логика прошивки и сохранения) ===
         const addKeyForm = document.getElementById('addKeyForm');
         if (addKeyForm) {
             addKeyForm.addEventListener('submit', async (e) => {
                 e.preventDefault();
+
+                // Проверяем, выбрал ли пользователь порт заранее
+                if (!selectedPort) {
+                    Swal.fire('Внимание', 'Пожалуйста, сначала выберите COM-порт устройства с помощью кнопки!', 'warning');
+                    return;
+                }
+
                 const form = e.target;
                 const formData = new FormData(form);
 
-                Swal.fire({
-                    title: 'Ожидание метки...',
-                    text: 'Пожалуйста, поднесите пустую карту к считывателю Nano',
-                    icon: 'info',
-                    allowOutsideClick: false,
-                    showConfirmButton: false,
-                    didOpen: () => { Swal.showLoading(); }
-                });
-
                 try {
-                    const response = await fetch(form.getAttribute('action'), {
-                        method: 'POST',
-                        body: formData
-                    });
-                    const result = await response.json();
+                    // Открываем выбранный ранее порт
+                    await selectedPort.open({ baudRate: 9600 });
 
+                    // Показываем окно ожидания метки
                     Swal.fire({
-                        title: result.status === 'success' ? 'Успех!' : 'Ошибка',
-                        text: result.message,
-                        icon: result.status,
-                        confirmButtonText: 'Ок'
-                    }).then((swalResult) => {
-                        if (result.status === 'success' && swalResult.isConfirmed) {
-                            location.reload(); 
-                        }
+                        title: 'Ожидание метки...',
+                        text: 'Пожалуйста, поднесите пустую карту к локальному считывателю',
+                        icon: 'info',
+                        allowOutsideClick: false,
+                        showConfirmButton: false,
+                        didOpen: () => { Swal.showLoading(); }
                     });
+
+                    // Шаг А: Запрашиваем у бэкенда генерацию пакета ключа
+                    const initResponse = await fetch(form.getAttribute('action'), { method: 'GET'});
+                    const initResult = await initResponse.json();
+                    if (initResult.status !== 'success') {
+                        throw new Error(initResult.message || 'Ошибка генерации пакета на сервере');
+                    }
+
+                    // Переводим hex-строку от бэкенда в массив байт для Arduino
+                    const packetBytes = new Uint8Array(initResult.message.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+                    //const packetBytes = new Uint8Array(initResult.message);
+                    
+
+                    // Шаг Б: Пишем команду в COM-порт клиента
+                    setTimeout(async () => {
+                        const writer = selectedPort.writable.getWriter();
+                        await writer.write(new Uint8Array([0x57])); // Отправляем 'W'
+                        await writer.write(packetBytes);            // Отправляем пакет
+                        writer.releaseLock();
+                        
+                        // Шаг В: Ждем ответ от Arduino Nano о завершении записи
+                        const reader = selectedPort.readable.getReader();
+                        let decoder = new TextDecoder();
+                        let serialResponse = "";
+                        
+                        while (true) {
+                            const { value, done } = await reader.read();
+                            if (done) break;
+                            serialResponse += decoder.decode(value);
+                            console.log("wait");
+                            if (serialResponse.includes("Write complite")) {
+                                break;
+                            }
+                        }
+                        reader.releaseLock();
+                        await selectedPort.close(); // Обязательно закрываем порт после работы
+
+                        // Шаг Г: Прошивка успешна, отправляем команду бэкенду записать всё в базу данных
+                        const saveResponse = await fetch('/admin/save_key', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                visitor: formData.get('visitor'),
+                                labs: formData.get('labs'),
+                                key: initResult.message,
+                                valid: formData.get('valid')
+                            })
+                        });
+                        const saveResult = await saveResponse.json();
+
+                        // Шаг Д: Финал
+                        Swal.fire({
+                            title: saveResult.status === 'success' ? 'Успех!' : 'Ошибка',
+                            text: saveResult.message,
+                            icon: saveResult.status,
+                            confirmButtonText: 'Ок'
+                        }).then((swalResult) => {
+                            if (saveResult.status === 'success' && swalResult.isConfirmed) {
+                                location.reload(); 
+                            }
+                        });
+
+                    }, 2000);
                 } catch (error) {
                     console.error(error);
-                    Swal.fire('Ошибка', 'Не удалось связаться с сервером или время вышло', 'error');
+                    // На случай непредвиденного сбоя пытаемся освободить порт, если он остался открыт
+                    try { await selectedPort.close(); } catch(pErr) {}
+                    Swal.fire('Ошибка', 'Произошла ошибка при прошивке: ' + error.message, 'error');
                 }
             });
         }
 
+        // === 3. Обработчик всех остальных форм (Удаление и Обновление) ===
         document.querySelectorAll('form').forEach(form => {
             if (form.id !== 'addKeyForm') {
                 form.addEventListener('submit', async (e) => {

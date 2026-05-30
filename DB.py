@@ -11,7 +11,7 @@ class DB:
         self.DB_ADDRESS = 'localhost'
         self.DB_USER = 'admin'
         self.DB_NAME = "iot"
-        self.DB_PASSWORD = 'password'
+        self.DB_PASSWORD = 'admin'
         self.__conn = None
         self.__cur = None
         self._connect()

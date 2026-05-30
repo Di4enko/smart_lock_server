@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from routers import locks, admin, keys
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
 import logging
 
 # Настройки
@@ -20,6 +21,8 @@ app = FastAPI(
 app.include_router(admin.router, prefix="/admin")
 app.include_router(locks.router, prefix="/admin")
 app.include_router(keys.router, prefix="/admin")
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # @app.exception_handler(RequestValidationError)
 # async def validation_exception_handler(request: Request, exc: RequestValidationError):
